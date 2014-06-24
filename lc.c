@@ -16,25 +16,25 @@ Authors : J. Haughey, A. Jerkstrand
 // PARAMETERS :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
 // Grid:
-# define tmax_days 50.    // Final light curve time in days.
+# define tmax_days 50.0    // Final light curve time in days.
 # define mgridpoints 101  // The number of mass grid points to use
 
 // Fixed model parameters:
-# define r0_rsun 1.0     // Initial radius in Rsun
+# define r0_rsun 10.0     // Initial radius in Rsun
 # define kappa 0.1        // UVOIR opacity cm2/g
 # define kappagamma 0.030 // gamma ray opacity cm2/g 
 # define frac_kin 1.0   // Fraction of explosion energy used to compute velocities. Use 1 for compact progenitors, 0.5 for extended.
 # define deplim 0.5    // Fraction of ejecta to do energy deposition in (takes from inner edge)
 
 // Model parameter grid
-# define MassNi_msun_min 0.07
-# define MassNi_msun_max 0.07
-# define MassNi_msun_step 0.01
+# define MassNi_int_msun_min 1.0
+# define MassNi_int_msun_max 1.0
+# define MassNi_int_msun_step 0.01
 # define Emin_E51 1.0
 # define Emax_E51 1.0
 # define Estep 0.1
-# define Mej_msun_min 3.0
-# define Mej_msun_max 3.0
+# define Mej_msun_min 10.0
+# define Mej_msun_max 10.0
 # define Mej_msun_step 0.1
 
 // END PARAMETERS :::::::::::::::::::::::::::::::::::::::::::::::::::
@@ -48,9 +48,10 @@ Authors : J. Haughey, A. Jerkstrand
 int main(void) {
     
   // INITIALISING EVERYTHING/////////////////////////////////////////////
-  int tgridpoints=4000000; // some quantites are saved for each time step, this is maximum size of array to hold these values
+  int tgridpoints=400000000; // some quantites are saved for each time step, this is maximum size of array to hold these values
   int nm, nt, i, ntfinal; 
-  double Tinitial, deltam, Mej_gram, tmax_sec, Eexplosion_erg, r0_cm, v, uinitial, deltat, tadiabatic, R, fluxlimiter, radius, A1, A4, Amax, dudt, Mej_msun, Eexplosion_E51, MassNi_msun, radius_outer, Ltot, taugamma, G, Dgamma;   
+  double Tinitial, deltam, Mej_gram, tmax_sec, Eexplosion_erg, r0_cm, v, uinitial, deltat, tadiabatic, R, fluxlimiter, radius, A1, A4, Amax;
+  double dudt, Mej_msun, Eexplosion_E51, MassNi_int_msun, radius_outer, Ltot, taugamma, G, Dgamma;   
   char name[256];    
   FILE *namefile;
   namefile = fopen("out/modellist.txt", "w");      // puts all output filenames into a list.
@@ -58,33 +59,33 @@ int main(void) {
   double *tcourant = malloc(tgridpoints*sizeof(double));
   double *L = malloc(tgridpoints*sizeof(double));
   double *timesec = malloc(tgridpoints*sizeof(double));
-  double *LNi = malloc(tgridpoints*sizeof(double));
-  double *LCo = malloc(tgridpoints*sizeof(double));
-  double *Ldecay = malloc(tgridpoints*sizeof(double));
+  double *LNi = malloc(mgridpoints*sizeof(double));
+  double *LCo = malloc(mgridpoints*sizeof(double));
+  double *Ldecay = malloc(mgridpoints*sizeof(double));
   double *vvec = malloc(mgridpoints*sizeof(double)); // Mass-coordinate dependent quantities, overwrite each time step
   double *rinit = malloc(mgridpoints*sizeof(double));
   double *utimesrhobis = malloc(mgridpoints*sizeof(double));
   double *utimesrhoprim = malloc(mgridpoints*sizeof(double));
   double *u = malloc(mgridpoints*sizeof(double));
   double *unext = malloc(mgridpoints*sizeof(double));
-
+  double *MassNi_msun = malloc(mgridpoints*sizeof(double));
+  
   time_t t0, t1; // For timing purposes
   clock_t c0, c1;
   t0 = time(NULL);
   c0 = clock();
-    
-  for( MassNi_msun = MassNi_msun_min; MassNi_msun <= MassNi_msun_max; MassNi_msun = MassNi_msun + MassNi_msun_step)     // loop over 56Ni mass
+  
+  
+   for( MassNi_int_msun = MassNi_int_msun_min; MassNi_int_msun <= MassNi_int_msun_max; MassNi_int_msun = MassNi_int_msun + MassNi_int_msun_step)  // loop over initial 56Ni mass
     {
-    
-      for(Eexplosion_E51 = Emin_E51; Eexplosion_E51 <= Emax_E51; Eexplosion_E51 = Eexplosion_E51 + Estep)      // loop over explosion energy
-	{
-    
-	  for( Mej_msun = Mej_msun_min; Mej_msun <= Mej_msun_max; Mej_msun = Mej_msun + Mej_msun_step)     // loop over ejecta mass
+     for(Eexplosion_E51 = Emin_E51; Eexplosion_E51 <= Emax_E51; Eexplosion_E51 = Eexplosion_E51 + Estep)      // loop over explosion energy
+	  {
+       for( Mej_msun = Mej_msun_min; Mej_msun <= Mej_msun_max; Mej_msun = Mej_msun + Mej_msun_step)     // loop over ejecta mass
 	    {
     
 	      FILE *finout;
         
-	      snprintf( name, sizeof(name), "out/Ni_%g_E_%g_M_%g_R0_%g.txt", MassNi_msun, Eexplosion_E51, Mej_msun, r0_rsun); // Create filename with parameters baked in..gives for example Ni_0.07_E0_0.5_mass_1.5.txt
+	      snprintf( name, sizeof(name), "out/Ni_%g_E_%g_M_%g_R0_%g.txt", MassNi_int_msun, Eexplosion_E51, Mej_msun, r0_rsun); // Create filename with parameters baked in..gives for example Ni_0.07_E0_0.5_mass_1.5.txt
     
 	      finout = fopen( name, "w+" );
     
@@ -100,7 +101,7 @@ int main(void) {
     
 	      deltam = Mej_gram/((float)(mgridpoints-1));  // Mass step
        
-	      printf ("mass = %g\t\tEexplosion_erg = %g\t\tM(56Ni) = %g\nmgridpoints =  %d\n",Mej_msun, Eexplosion_E51, MassNi_msun, mgridpoints);
+	      printf ("mass = %g\t\tEexplosion_erg = %g\t\tM(56Ni) = %g\nmgridpoints =  %d\n",Mej_msun, Eexplosion_E51, MassNi_int_msun, mgridpoints);
        
 	      // INITIAL CONDITIONS///////// note full description is missing in H13, assume uniform (radiation dominated) energy density distribution
     	      
@@ -111,7 +112,7 @@ int main(void) {
 	      uinitial = a*pow(Tinitial,4)/rho[0]; //ok  assume radiation energy dominated
     
 	      v = pow( (10 * (frac_kin*Eexplosion_erg) )/ ( 3 * Mej_gram ), 0.5 );	//ok outer velocity of homologously expanding uniform sphere, use fraction frac_kin of explosion energy	
-	      
+
 	      for (nm = 0; nm <= mgridpoints-1; nm++ ) // Loop over mass grid
 		{
 		  rinit[nm] = r0_cm*pow( (float)nm/((float)(mgridpoints-1)), 1./3.); //  compute r as function of m, uniform sphere
@@ -134,33 +135,27 @@ int main(void) {
 		    {
 		      u[nm] = unext[nm];  
 		    }
-		          
+
 		  radius_outer = r0_cm + v*timesec[nt]; // ok
         
 		  rho[nt] = ( 3 * Mej_gram ) / ( 4 * M_PI * pow(radius_outer , 3 ) ); // ok
         
 		  Amax = 16*M_PI*M_PI*c/(3*kappa)*pow(radius_outer, 4);  // ok  Eq 2.5 in H13..typo an extra rho there
         
-		  tcourant[nt] = 0.5*pow(deltam,2)/(Amax*rho[nt]); //  Time-step over which numerical instability arises  Eq 2.4 in H13
+		  tcourant[nt] = 0.1*pow(deltam,2)/(Amax*rho[nt]); //  Time-step over which numerical instability arises  Eq 2.4 in H13
         
 		  tadiabatic = (r0_cm + v*timesec[nt])/v; // IMPORTANT Time scale over which density changes significantly - should not exceed this
         
-		  deltat = 0.25*tcourant[nt]; // Take a time-step a few times smaller than the courant step
+		  deltat = 0.1*tcourant[nt]; // Take a time-step a few times smaller than the courant step
         
 		  if (deltat > 0.25*tadiabatic) deltat = 0.25*tadiabatic; // ..but if adiabatic time scale is shorter use that.
 
 		  //if (timesec[nt] < 86400) deltat = 100.;  // First 24 h, do very short steps to resolve TEMP
-        
-		  LNi[nt] = 7.8E43 * MassNi_msun * exp(-timesec[nt]/tauNi);  //56Ni decay luminosity..H13 eq 1.22
-
-		  LCo[nt] =  1.4E43 * MassNi_msun * ((exp(-timesec[nt]/tauCo) - exp(-timesec[nt]/tauNi))/ ( 1 - (tauNi/tauCo)));  //56Co luminosity..H13 eq 1.23
-
-		  Ldecay[nt] = LNi[nt] + LCo[nt];  // Total decay luminosity (56Ni + 56Co)
-        
+              
 		  for ( nm = 1; nm <= mgridpoints-2; nm ++ )		// for each point on the mass grid (except two borders for which 2nd derivates cannot be done and will be replaced by boundary conditions)..
 		    {
-            
-		      radius = rinit[nm] + vvec[nm]*timesec[nt]; // ok
+                      
+              radius = rinit[nm] + vvec[nm]*timesec[nt]; // ok
             
 		      utimesrhoprim[nm] = rho[nt]*(u[nm+1] - u[nm])/deltam;  // forward derivative du/dx
             
@@ -180,20 +175,28 @@ int main(void) {
 		      G = taugamma/(taugamma + 1.6);    // Arnett 1982 Eq 51. Eq 1.25 in H13
             
 		      Dgamma = G*(1 + 2*G*(1-G)*(1-0.75*G));    // Arnett 1982 eq 50. Eq 1.24 in H13
-		               
+		      
+		      MassNi_msun[nm] = MassNi_int_msun * exp(-radius) * nm;
+		      
+		      LNi[nm] = 7.8E43 * MassNi_msun[nm] * exp(-timesec[nt]/tauNi);  //56Ni decay luminosity..H13 eq 1.22
+
+		      LCo[nm] =  1.4E43 * MassNi_msun[nm] * ((exp(-timesec[nt]/tauCo) - exp(-timesec[nt]/tauNi))/ ( 1 - (tauNi/tauCo)));  //56Co luminosity..H13 eq 1.23
+
+		      Ldecay[nm] = LNi[nm] + LCo[nm];  // Total decay luminosity (56Ni + 56Co)
+
 		      if( (float)nm/(float)mgridpoints <= deplim)  // Is the mass coordinate inside limit for deposition?
                 
 			{ 
-			  dudt = (A1*utimesrhoprim[nm] + A4*utimesrhobis[nm])*fluxlimiter - u[nm]*(vvec[nm]/(rinit[nm]+vvec[nm]*timesec[nt])) + (1./deplim)*(Ldecay[nt]/Mej_gram)*(0.97*Dgamma + 0.03); // add fluxlimiter and use rinit[nm]                
+			  dudt = (A1*utimesrhoprim[nm] + A4*utimesrhobis[nm])*fluxlimiter - u[nm]*(vvec[nm]/(rinit[nm]+vvec[nm]*timesec[nt])) + (1./deplim)*(Ldecay[nm]/Mej_gram)*(0.97*Dgamma + 0.03); // add fluxlimiter and use rinit[nm]                
 			}
-		      
+
 		      else  // no energy source term
 			{                
 			  dudt = (A1*utimesrhoprim[nm] + A4*utimesrhobis[nm])*fluxlimiter- u[nm]*(vvec[nm]/(rinit[nm]+vvec[nm]*timesec[nt]));// NEW add fluxlimiter and use rinit[nm]
 			}
             
 		      unext[nm] = u[nm] + dudt*deltat;  // Do the explicit time-derivate step
-            
+		                  
 		    }
         
 		  // Boundary conditions
@@ -233,28 +236,20 @@ int main(void) {
 	      ntfinal = nt;
 	      printf("Ltot = %g\nntfinal = %d\n:\n", Ltot, nt);
 	      fprintf( namefile, "%s\n", name);     // prints all new text file names to file - important
-	      
+
 	      for ( nt = 0; nt <= ntfinal-1; nt = nt+20 )
 		{
         
 		  fprintf(finout, "%g\t%g\n", timesec[nt]/(86400.0), L[nt]);
         
 		}
-	
+
         
 	      fclose( finout );
-	
+
 	    }
 	}   
-    }
-    
+}
+      
     return EXIT_SUCCESS;
 }
-
-
-
-//Hi Anders
-
-
-
-
