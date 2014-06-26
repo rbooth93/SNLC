@@ -20,21 +20,21 @@ Authors : J. Haughey, A. Jerkstrand
 # define mgridpoints 101  // The number of mass grid points to use
 
 // Fixed model parameters:
-# define r0_rsun 10.0     // Initial radius in Rsun
+# define r0_rsun 1.0     // Initial radius in Rsun
 # define kappa 0.1        // UVOIR opacity cm2/g
 # define kappagamma 0.030 // gamma ray opacity cm2/g 
 # define frac_kin 1.0   // Fraction of explosion energy used to compute velocities. Use 1 for compact progenitors, 0.5 for extended.
 # define deplim 0.5    // Fraction of ejecta to do energy deposition in (takes from inner edge)
 
 // Model parameter grid
-# define MassNi_int_msun_min 1.0
-# define MassNi_int_msun_max 1.0
+# define MassNi_int_msun_min 0.2
+# define MassNi_int_msun_max 0.2
 # define MassNi_int_msun_step 0.01
 # define Emin_E51 1.0
 # define Emax_E51 1.0
 # define Estep 0.1
-# define Mej_msun_min 10.0
-# define Mej_msun_max 10.0
+# define Mej_msun_min 5.0
+# define Mej_msun_max 5.0
 # define Mej_msun_step 0.1
 
 // END PARAMETERS :::::::::::::::::::::::::::::::::::::::::::::::::::
@@ -176,7 +176,7 @@ int main(void) {
             
 		      Dgamma = G*(1 + 2*G*(1-G)*(1-0.75*G));    // Arnett 1982 eq 50. Eq 1.24 in H13
 		      
-		      MassNi_msun[nm] = MassNi_int_msun * exp(-radius) * nm;
+		      MassNi_msun[nm] = MassNi_int_msun * exp(-vvec[nm]/v);
 		      
 		      LNi[nm] = 7.8E43 * MassNi_msun[nm] * exp(-timesec[nt]/tauNi);  //56Ni decay luminosity..H13 eq 1.22
 
