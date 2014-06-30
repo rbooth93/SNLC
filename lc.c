@@ -27,14 +27,14 @@ Authors : J. Haughey, A. Jerkstrand
 # define deplim 0.5    // Fraction of ejecta to do energy deposition in (takes from inner edge)
 
 // Model parameter grid
-# define MassNi_int_msun_min 0.2
-# define MassNi_int_msun_max 0.2
+# define MassNi_int_msun_min 0.07
+# define MassNi_int_msun_max 0.07
 # define MassNi_int_msun_step 0.01
 # define Emin_E51 1.0
 # define Emax_E51 1.0
 # define Estep 0.1
-# define Mej_msun_min 5.0
-# define Mej_msun_max 5.0
+# define Mej_msun_min 3.0
+# define Mej_msun_max 3.0
 # define Mej_msun_step 0.1
 
 // END PARAMETERS :::::::::::::::::::::::::::::::::::::::::::::::::::
@@ -49,12 +49,14 @@ int main(void) {
     
   // INITIALISING EVERYTHING/////////////////////////////////////////////
   int tgridpoints=400000000; // some quantites are saved for each time step, this is maximum size of array to hold these values
-  int nm, nt, i, ntfinal; 
+  int nm, nt, ntfinal, row=100, col=2, i, j, x, y; 
   double Tinitial, deltam, Mej_gram, tmax_sec, Eexplosion_erg, r0_cm, v, uinitial, deltat, tadiabatic, R, fluxlimiter, radius, A1, A4, Amax;
-  double dudt, Mej_msun, Eexplosion_E51, MassNi_int_msun, radius_outer, Ltot, taugamma, G, Dgamma;   
+  double dudt, Mej_msun, Eexplosion_E51, MassNi_int_msun, radius_outer, Ltot, taugamma, G, Dgamma,  MassNi_msun;   
   char name[256];    
   FILE *namefile;
+  FILE *infile;
   namefile = fopen("out/modellist.txt", "w");      // puts all output filenames into a list.
+  infile = fopen("read_file.txt", "r"); //Opens file to read values
   double *rho = malloc(tgridpoints*sizeof(double)); // Scalar quantities for each time step
   double *tcourant = malloc(tgridpoints*sizeof(double));
   double *L = malloc(tgridpoints*sizeof(double));
@@ -68,12 +70,18 @@ int main(void) {
   double *utimesrhoprim = malloc(mgridpoints*sizeof(double));
   double *u = malloc(mgridpoints*sizeof(double));
   double *unext = malloc(mgridpoints*sizeof(double));
-  double *MassNi_msun = malloc(mgridpoints*sizeof(double));
+  double vvec_MassNi[row][col];
   
   time_t t0, t1; // For timing purposes
   clock_t c0, c1;
   t0 = time(NULL);
   c0 = clock();
+  
+  for(i=0; i<row; i++){
+    for(j=0; j<col; j++){
+      fscanf(infile, " %lf", &vvec_MassNi[i][j]);
+    }
+  } 
   
   
    for( MassNi_int_msun = MassNi_int_msun_min; MassNi_int_msun <= MassNi_int_msun_max; MassNi_int_msun = MassNi_int_msun + MassNi_int_msun_step)  // loop over initial 56Ni mass
@@ -176,11 +184,20 @@ int main(void) {
             
 		      Dgamma = G*(1 + 2*G*(1-G)*(1-0.75*G));    // Arnett 1982 eq 50. Eq 1.24 in H13
 		      
-		      MassNi_msun[nm] = MassNi_int_msun * exp(-vvec[nm]/v);
-		      
-		      LNi[nm] = 7.8E43 * MassNi_msun[nm] * exp(-timesec[nt]/tauNi);  //56Ni decay luminosity..H13 eq 1.22
+		      x = (int)((vvec[nm]/1E4) + 0.5); // Round vvec value to compare to text file
+              for(i=0; i<row; i++){
+                y = (int)((vvec_MassNi[i][0]/1E4) + 0.5); //Round text file value for comparison
+                if(y == x){
+                  MassNi_msun = vvec_MassNi[nm][1]; //If the two values match then allocate the corresponding 56 Ni mass
+                  break;
+                  }else{
+                    continue;
+                }
+              }
+		            
+		      LNi[nm] = 7.8E43 * MassNi_msun * exp(-timesec[nt]/tauNi);  //56Ni decay luminosity..H13 eq 1.22
 
-		      LCo[nm] =  1.4E43 * MassNi_msun[nm] * ((exp(-timesec[nt]/tauCo) - exp(-timesec[nt]/tauNi))/ ( 1 - (tauNi/tauCo)));  //56Co luminosity..H13 eq 1.23
+		      LCo[nm] =  1.4E43 * MassNi_msun * ((exp(-timesec[nt]/tauCo) - exp(-timesec[nt]/tauNi))/ ( 1 - (tauNi/tauCo)));  //56Co luminosity..H13 eq 1.23
 
 		      Ldecay[nm] = LNi[nm] + LCo[nm];  // Total decay luminosity (56Ni + 56Co)
 
