@@ -49,9 +49,9 @@ int main(void) {
     
   // INITIALISING EVERYTHING/////////////////////////////////////////////
   int tgridpoints=400000000; // some quantites are saved for each time step, this is maximum size of array to hold these values
-  int nm, nt, ntfinal, row=100, col=2, i, j, x, y; 
+  int nm, nt, ntfinal, row=100, col=2, i, j; 
   double Tinitial, deltam, Mej_gram, tmax_sec, Eexplosion_erg, r0_cm, v, uinitial, deltat, tadiabatic, R, fluxlimiter, radius, A1, A4, Amax;
-  double dudt, Mej_msun, Eexplosion_E51, MassNi_int_msun, radius_outer, Ltot, taugamma, G, Dgamma,  MassNi_msun;   
+  double dudt, Mej_msun, Eexplosion_E51, MassNi_int_msun, radius_outer, Ltot, taugamma, G, Dgamma, x, y, mass_cell;   
   char name[256];    
   FILE *namefile;
   FILE *infile;
@@ -70,7 +70,8 @@ int main(void) {
   double *utimesrhoprim = malloc(mgridpoints*sizeof(double));
   double *u = malloc(mgridpoints*sizeof(double));
   double *unext = malloc(mgridpoints*sizeof(double));
-  double vvec_MassNi[row][col];
+  double *MassNi_msun = malloc(mgridpoints*sizeof(double));
+  double masscoord_MassNi[row][col];
   
   time_t t0, t1; // For timing purposes
   clock_t c0, c1;
@@ -79,11 +80,10 @@ int main(void) {
   
   for(i=0; i<row; i++){
     for(j=0; j<col; j++){
-      fscanf(infile, " %lf", &vvec_MassNi[i][j]);
+      fscanf(infile, " %lf", &masscoord_MassNi[i][j]); //Reading in values for vvec and corresponding Ni mass into a 2D array
     }
   } 
-  
-  
+    
    for( MassNi_int_msun = MassNi_int_msun_min; MassNi_int_msun <= MassNi_int_msun_max; MassNi_int_msun = MassNi_int_msun + MassNi_int_msun_step)  // loop over initial 56Ni mass
     {
      for(Eexplosion_E51 = Emin_E51; Eexplosion_E51 <= Emax_E51; Eexplosion_E51 = Eexplosion_E51 + Estep)      // loop over explosion energy
@@ -100,7 +100,26 @@ int main(void) {
 	      Eexplosion_erg = Eexplosion_E51 * 1E51; // Convert to erg
 
 	      Mej_gram = Mej_msun * 2E33;  // Convert to gram
-
+	      
+	      for(i=0; i<row; i++){
+            masscoord_MassNi[i][0] = masscoord_MassNi[i][0] * Mej_gram; // Converting normalised mass coordinate into mass coordinate
+          }
+  
+          for(nm=0; nm<mgridpoints-1; nm++){ // Loop over number of mass gridpoints
+            x = ((float)nm/((float)mgridpoints-1)) * Mej_gram; //Calculating mass coordinate for a value of nm
+	        for(i=0; i<row; i++){ // Search through array rows
+              y = masscoord_MassNi[i][0]; //Mass coordinate in array
+              if(y > x){
+                MassNi_msun[nm] = masscoord_MassNi[i-1][1]; //If the two values match then allocate the corresponding 56 Ni mass
+                break;
+                }else{
+                  continue;
+                }
+            }
+          }       
+           
+	      mass_cell = Mej_gram / (mgridpoints-1); // Calculating the mass of one cell DC 
+	      
 	      r0_cm = r0_rsun * 7E10;  // Convert to cm
 
 	      tmax_sec = tmax_days * 86400; // Convert to seconds
@@ -154,7 +173,7 @@ int main(void) {
         
 		  tadiabatic = (r0_cm + v*timesec[nt])/v; // IMPORTANT Time scale over which density changes significantly - should not exceed this
         
-		  deltat = 0.1*tcourant[nt]; // Take a time-step a few times smaller than the courant step
+		  deltat = 0.25*tcourant[nt]; // Take a time-step a few times smaller than the courant step
         
 		  if (deltat > 0.25*tadiabatic) deltat = 0.25*tadiabatic; // ..but if adiabatic time scale is shorter use that.
 
@@ -176,7 +195,7 @@ int main(void) {
 		      R = 4*M_PI*pow( radius, 2)/(kappa*u[nm])*fabs((u[nm] - u[nm-1])/deltam);  // Eq 1.19 in H13
             
 		      fluxlimiter = (6 + 3*R)/(6 + 3*R + R*R); // fluxlimiter is "beta" in H13 writeup. eq 1.19
-            
+		             
 		      // Gamma ray Deposition
 		      taugamma = kappagamma*rho[nt]*radius_outer;  // Eq 1.26 in H13
             
@@ -184,33 +203,14 @@ int main(void) {
             
 		      Dgamma = G*(1 + 2*G*(1-G)*(1-0.75*G));    // Arnett 1982 eq 50. Eq 1.24 in H13
 		      
-		      x = (int)((vvec[nm]/1E4) + 0.5); // Round vvec value to compare to text file
-              for(i=0; i<row; i++){
-                y = (int)((vvec_MassNi[i][0]/1E4) + 0.5); //Round text file value for comparison
-                if(y == x){
-                  MassNi_msun = vvec_MassNi[nm][1]; //If the two values match then allocate the corresponding 56 Ni mass
-                  break;
-                  }else{
-                    continue;
-                }
-              }
 		            
-		      LNi[nm] = 7.8E43 * MassNi_msun * exp(-timesec[nt]/tauNi);  //56Ni decay luminosity..H13 eq 1.22
+		      LNi[nm] = 7.8E43 * MassNi_msun[nm] * exp(-timesec[nt]/tauNi);  //56Ni decay luminosity..H13 eq 1.22
 
-		      LCo[nm] =  1.4E43 * MassNi_msun * ((exp(-timesec[nt]/tauCo) - exp(-timesec[nt]/tauNi))/ ( 1 - (tauNi/tauCo)));  //56Co luminosity..H13 eq 1.23
+		      LCo[nm] =  1.4E43 * MassNi_msun[nm] * ((exp(-timesec[nt]/tauCo) - exp(-timesec[nt]/tauNi))/ ( 1 - (tauNi/tauCo)));  //56Co luminosity..H13 eq 1.23
 
 		      Ldecay[nm] = LNi[nm] + LCo[nm];  // Total decay luminosity (56Ni + 56Co)
-
-		      if( (float)nm/(float)mgridpoints <= deplim)  // Is the mass coordinate inside limit for deposition?
-                
-			{ 
-			  dudt = (A1*utimesrhoprim[nm] + A4*utimesrhobis[nm])*fluxlimiter - u[nm]*(vvec[nm]/(rinit[nm]+vvec[nm]*timesec[nt])) + (1./deplim)*(Ldecay[nm]/Mej_gram)*(0.97*Dgamma + 0.03); // add fluxlimiter and use rinit[nm]                
-			}
-
-		      else  // no energy source term
-			{                
-			  dudt = (A1*utimesrhoprim[nm] + A4*utimesrhobis[nm])*fluxlimiter- u[nm]*(vvec[nm]/(rinit[nm]+vvec[nm]*timesec[nt]));// NEW add fluxlimiter and use rinit[nm]
-			}
+		     
+			  dudt = (A1*utimesrhoprim[nm] + A4*utimesrhobis[nm])*fluxlimiter - u[nm]*(vvec[nm]/(rinit[nm]+vvec[nm]*timesec[nt])) + (Ldecay[nm]/mass_cell)*(0.97*Dgamma + 0.03); // add fluxlimiter and use rinit[nm]
             
 		      unext[nm] = u[nm] + dudt*deltat;  // Do the explicit time-derivate step
 		                  
