@@ -18,6 +18,8 @@ Authors : J. Haughey, A. Jerkstrand
 // Grid:
 # define tmax_days 50.0    // Final light curve time in days.
 # define mgridpoints 101  // The number of mass grid points to use
+# define max_theta 50 //Number of angles used for gamma ray deposition
+# define max_ns 50 //Number of steps used for gamma ray deposition
 
 // Fixed model parameters:
 # define r0_rsun 1.0     // Initial radius in Rsun
@@ -48,24 +50,26 @@ Authors : J. Haughey, A. Jerkstrand
 
 //FUNCTIONS
 double calculate_Ldecay(double mass_Ni, double time);
-double calculate_Li(double normalisation_factor[], double Ldecay[]);
+double calculate_normalisation_factor();
 double calculate_ds(double theta, double rinit, double r0, double radius_outer);
 double calculate_velocity(int ns, double ds, double theta, double radius, double radius_outer, double v);
 double calculate_dep(double rho, double ds);
-int find_value_nm(int nm2, double vvec, double velocity);
-double gamma_deposition(double Ldeposition[], double Ldecay[], double radius[], double rho_nm[], double vvec[], double radius_outer, double v, double r0_cm, double rinit[], double normalisation_factor[]);
+int find_value_nm(double vvec[], double velocity);
+double gamma_deposition(double Ldeposition[], double Ldecay[], double radius[], double rho_nm[], double vvec[], double radius_outer, double v, double r0_cm, double rinit[], double normalisation_factor);
 
 int main(void){
     
   // INITIALISING EVERYTHING/////////////////////////////////////////////
   int tgridpoints=400000000; // some quantites are saved for each time step, this is maximum size of array to hold these values
-  int nm, nm2, nt, ntfinal, row=100, col=2, i, j, ns, value_nm, ntheta; 
+  int nm, nm2, nt, ntfinal, row=99, col=2, i, j, ns, value_nm, ntheta; 
   double Tinitial, deltam, Mej_gram, tmax_sec, Eexplosion_erg, r0_cm, v, uinitial, deltat, tadiabatic, R, fluxlimiter, A1, A4, Amax;
   double dudt, Mej_msun, Eexplosion_E51, MassNi_int_msun, radius_outer, Ltot, taugamma, G, Dgamma, mass_cell;
-  double sum_Ldep, sum_Ldecay, tau, L_escape;
+  double sum_Ldep, sum_Ldecay, tau, normalisation_factor, tauwant;
   char name[256];    
   FILE *namefile;
   FILE *infile;
+  FILE *outfile;
+  outfile = fopen("tau.txt", "w");
   namefile = fopen("out/modellist.txt", "w");      // puts all output filenames into a list.
   infile = fopen("read_file.txt", "r"); //Opens file to read values
   double *rho = malloc(tgridpoints*sizeof(double)); // Scalar quantities for each time step
@@ -87,7 +91,6 @@ int main(void){
   double *rho_nm = malloc(mgridpoints*sizeof(double)); 
   double *Ldeposition = malloc(mgridpoints*sizeof(double));  
   double masscoord_MassNi[row][col];
-  double *normalisation_factor = malloc(mgridpoints*sizeof(double));
   
   time_t t0, t1; // For timing purposes
   clock_t c0, c1;
@@ -99,6 +102,9 @@ int main(void){
       fscanf(infile, " %lf", &masscoord_MassNi[i][j]); //Reading in values for vvec and corresponding Ni mass into a 2D array
     }
   } 
+  
+  normalisation_factor = calculate_normalisation_factor();
+  //printf("%g\n", normalisation_factor); //DC prints normalisation factor
     
    for( MassNi_int_msun = MassNi_int_msun_min; MassNi_int_msun <= MassNi_int_msun_max; MassNi_int_msun = MassNi_int_msun + MassNi_int_msun_step){  // loop over initial 56Ni mass
      for(Eexplosion_E51 = Emin_E51; Eexplosion_E51 <= Emax_E51; Eexplosion_E51 = Eexplosion_E51 + Estep){      // loop over explosion energy
@@ -201,23 +207,29 @@ int main(void){
 		      radius[nm] = rinit[nm] + vvec[nm]*timesec[nt];	//Calculating radius of each mass shell as time progresses.
 		      Ldecay[nm] = calculate_Ldecay(MassNi_msun[nm], timesec[nt]); 	//Calculating Ldecay for each mass shell.
 		    }
-		    
+		    		    
 		    tau = kappagamma * rho[nt] * radius_outer;
-		    //if(timesec[nt]>1E4){printf("%g\n", tau);}
+		    
+		    /*tauwant = 10.0;
+		    
+			for(nm=0; nm<mgridpoints-1; nm++){ // TEMPORARY
+		    	rho_nm[nm] = rho[nt]*tauwant/tau; //Setting the density for each mass co-ordinate as the density at that time.
+		  	}*/ //Used for testing purposes
 		    
 		    if(tau>100){
 		      for(nm = 0; nm < mgridpoints-1; nm++){
 		      Ldeposition[nm] = Ldecay[nm]; //If optical depth is high then gamma rays are absorbed in the shell that they are produced
 		      }
 		      //printf("tau >100\t%g\n", timesec[nt]);
-		    }else{ //If optical depth is low then they are able to travel
-		    
-		      calculate_Li(normalisation_factor, Ldecay);
-		      for(nm = 0; nm < mgridpoints-1; nm++){
-		        //printf("nm %d\tnf %g\n", nm, normalisation_factor[nm]);
-		      }
-		    
+		    }else{  //If optical depth is low then gamma rays are able to travel
+		      
 		      gamma_deposition(Ldeposition, Ldecay, radius, rho_nm, vvec, radius_outer, v, r0_cm, rinit, normalisation_factor); //Calculates deposition in each mass shell
+		      
+		      //fprintf(outfile, "nm\tLdeposition\n");
+		      /*for (nm = 0; nm < mgridpoints-1; nm++){
+		         fprintf(outfile, "%d\t%g\n", nm, Ldeposition[nm]);
+		      }
+		      exit(0);*/
 		    
 		      sum_Ldep = 0;
 		      sum_Ldecay = 0;
@@ -227,7 +239,7 @@ int main(void){
 		        sum_Ldep = sum_Ldep + Ldeposition[nm];
 		      }
 		      //printf("tau <100\t%g\n", timesec[nt]);
-		      printf("energy %g\t%g\t%g\n", sum_Ldep,  L_escape, sum_Ldecay); //DC Energy conserved with both positrons and gamma rays
+		      printf("Energy %g\t%g\n", sum_Ldep,  sum_Ldecay); //DC Energy conserved with both positrons and gamma rays
 		    }
 		    
 		   for ( nm = 1; nm <= mgridpoints-2; nm ++ ){		// for each point on the mass grid (except two borders for which 2nd derivates cannot be done and will be replaced by boundary conditions)..
@@ -315,44 +327,30 @@ double calculate_Ldecay(double mass_Ni, double time){
   return Ldecay;   
 }
 
-double calculate_Li(double normalisation_factor[], double Ldecay[]){
-  int ntheta, nm, n_max;
-  double Li, sum_Li, theta, theta_rad, dtheta, sum_Ldecay;
-  
-  n_max = 10; sum_Ldecay = 0;
-  
-  for(nm=0; nm<mgridpoints-1; nm++){
-    normalisation_factor[nm]=0;
-  }
-  
-  for(nm=0; nm<mgridpoints-1; nm++){
-  
+double calculate_normalisation_factor(){
+  int ntheta, nm;
+  double Li, sum_Li, theta, theta_rad, dtheta, normalisation_factor;
+   
     theta = 0;
     
     sum_Li=0;
     
-    for(ntheta=0; ntheta<=n_max; ntheta++){
+    for(ntheta=0; ntheta<max_theta; ntheta++){
       
       theta_rad = theta * (pi/180);
       
-      dtheta = pi/n_max;
+      dtheta = pi/(max_theta);
       
-      Li = (0.97 * Ldecay[nm]) * (sin(theta_rad)*(dtheta)*(1.0/2.0));
+      Li = (sin(theta_rad)*(dtheta)*(1.0/2.0));
       
       sum_Li = sum_Li + Li;
       
-      theta = theta + (180 / n_max);
+      theta = theta + (180 / (double)(max_theta-1));
     }
     
-    normalisation_factor[nm] = (sum_Li / Ldecay[nm]);
-    
-    if(Ldecay[nm] == 0){
-      normalisation_factor[nm] = 1;
-    }
-    
-  }
+    normalisation_factor = sum_Li;
   
-  return *normalisation_factor;
+  return normalisation_factor;
   
 }
 
@@ -365,7 +363,7 @@ double calculate_ds(double theta, double rinit, double r0, double radius_outer){
 		        
   path_length = ((2*rinit*cos(theta_1))+pow((pow((2*rinit*cos(theta_1)),2)-(4*-(pow(r0,2)-pow(rinit,2)))),0.5))/2*(radius_outer/r0); // Length from current mass shell to surface in a particular direction
 		        
-  ds = path_length/100; // Divide path length into segments
+  ds = path_length/max_ns; // Divide path length into segments
   
   return ds;
 }
@@ -397,71 +395,86 @@ double calculate_dep(double rho, double ds){
   return deposition;
 }
 
-int find_value_nm(int nm2, double vvec, double velocity){
-  int value_nm;
+int find_value_nm(double vvec[], double velocity){
+  int value_nm, nm2;
   
+  //printf("vvecmax velocity %g\t%g\n",vvec[
   
-    if((float)vvec > (float)velocity ){ //Comparing vvec to velocity
-      value_nm = nm2 -1; //Allocate value of mass coordinate
+  for(nm2=0; nm2<=mgridpoints-1; nm2++){
+    if((float)vvec[nm2] > (float)velocity ){ //Comparing vvec to velocity
+      value_nm = nm2 - 1; //Allocate value of mass coordinate
+      break;
 	  }else{
-	  value_nm = (int)NULL;
+	    if((float)velocity > (float)vvec[100]){
+	      printf("Velocity is greater than vvec[100]\n");
+	      value_nm = mgridpoints - 1;
+	    }else{
+	      continue;
+	  }
 	}
-  
+	
+  }
   return value_nm;
 }
 
-double gamma_deposition(double Ldeposition[], double Ldecay[], double radius[], double rho_nm[], double vvec[], double radius_outer, double v, double r0_cm, double rinit[], double normalisation_factor[]){
+double gamma_deposition(double Ldeposition[], double Ldecay[], double radius[], double rho_nm[], double vvec[], double radius_outer, double v, double r0_cm, double rinit[], double normalisation_factor){
   int nm, ntheta, ns, nm2, value_nm;
-  double theta, Li, ds, velocity, deposition, theta_rad, dtheta;
+  double theta, Li, ds, velocity, deposition, theta_rad, dtheta, Li_init, L_escape=0;
   
   for (nm = 0; nm < mgridpoints-1; nm++){	
     Ldeposition[nm] = 0;	// Initialize to zero before each new calculation
   }
   
   for(nm=0; nm<mgridpoints-1; nm++){    	
-	Ldeposition[nm] = Ldeposition[nm] + (0.03 * Ldecay[nm]); //3% of energy goes to positrons which are absorbed in that shell
+	//Ldeposition[nm] = Ldeposition[nm] + (0.03 * Ldecay[nm]); //3% of energy goes to positrons which are absorbed in that shell
 		    	
 	theta=0; //Initialise theta
+	
+	if(Ldecay[nm] == 0){
+	    continue;
+	  }
 		    		  
-	for(ntheta=0; ntheta<=10; ntheta++){
-	  		        
+	for(ntheta=0; ntheta<max_theta; ntheta++){
+	          
       theta_rad = theta * (pi/180.0); //Convert to Radians
       
-      dtheta = pi/10.0;
+      dtheta = pi / (max_theta);
 	  
-	  Li = ((0.97 * Ldecay[nm]) * (sin(theta_rad)*(dtheta)*(1.0/2.0))) / normalisation_factor[nm]; //97% of energy goes to gamma rays which are free to move
-				  
+	  Li = ((1 * Ldecay[nm]) * (sin(theta_rad)*(dtheta)*(1.0/2.0))) / normalisation_factor; //97% of energy goes to gamma rays which are free to move
+	
+	  Li_init = Li;
+			  
 	  ds = calculate_ds(theta, rinit[nm], r0_cm, radius_outer); //Calculate the path length and divide into 100 segments - ds
 		      	 	
-	  for(ns=0; ns<=100; ns++){    	  
+	  for(ns=0; ns<max_ns; ns++){    	  
 	    velocity = calculate_velocity(ns, ds, theta, radius[nm], radius_outer, v); //Calculate the velocity of material at that point
-		          
-		for(nm2=0; nm2<mgridpoints-1; nm2++){            
-		  value_nm = find_value_nm(nm2, vvec[nm2], velocity); //Compare velocity to vvec to find what mass shell we are currently in
-		  if(value_nm == (int)NULL){
-		    continue;
-		  }else{
-		    break;
-		  }		              
-		} 
+		                     
+		value_nm = find_value_nm(vvec, velocity); //Compare velocity to vvec to find what mass shell we are currently in
+		
+		//printf("value_nm %d\n",value_nm);
 		         
 		deposition = calculate_dep(rho_nm[value_nm], ds); //Calculate deposition
 		         
 		Ldeposition[value_nm] = Ldeposition[value_nm] + (deposition*Li); //Adding amount of gamma ray absorbed to the total amount absorbed in that mass coordinate      		         
 		         
 		Li = Li - (deposition * Li); //Energy of gamma beam is decreased by the amount absorbed in segment
+		
+		//printf("%d\t%d\t%d\n", nm, ntheta, ns);
 		            
-		if(Li<=0){
+		if(Li < (0.0001*Li_init)){
+		  //printf("Li < 0.0001 initial\n");
 		  break;
 		}else{
 		  continue;
 		}
 		               
 	  }
+	  L_escape = L_escape + Li;
 	        
-	  theta = theta + 18; //Increase theta
+	  theta = theta + (180.0 / (double)(max_theta-1)); //Increase theta
 		                   
 	}  
   }
+  //printf("Lescape %g\n", L_escape);
   return *Ldeposition;
 }
