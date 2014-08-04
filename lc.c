@@ -68,8 +68,8 @@ int main(void){
   char name[256];    
   FILE *namefile;
   FILE *infile;
-  FILE *outfile;
-  outfile = fopen("tau.txt", "w");
+  //FILE *outfile; //TEMP testing purposes
+  //outfile = fopen("tau.txt", "w"); //TEMP testing purposes
   namefile = fopen("out/modellist.txt", "w");      // puts all output filenames into a list.
   infile = fopen("read_file.txt", "r"); //Opens file to read values
   double *rho = malloc(tgridpoints*sizeof(double)); // Scalar quantities for each time step
@@ -210,11 +210,11 @@ int main(void){
 		    		    
 		    tau = kappagamma * rho[nt] * radius_outer;
 		    
-		    /*tauwant = 10.0;
+		    /*tauwant = 10.0; //TEMP testing purposes
 		    
 			for(nm=0; nm<mgridpoints-1; nm++){ // TEMPORARY
 		    	rho_nm[nm] = rho[nt]*tauwant/tau; //Setting the density for each mass co-ordinate as the density at that time.
-		  	}*/ //Used for testing purposes
+		  	}*/ //TEMP testing purposes
 		    
 		    if(tau>100){
 		      for(nm = 0; nm < mgridpoints-1; nm++){
@@ -229,9 +229,9 @@ int main(void){
 		      /*for (nm = 0; nm < mgridpoints-1; nm++){
 		         fprintf(outfile, "%d\t%g\n", nm, Ldeposition[nm]);
 		      }
-		      exit(0);*/
+		      exit(0);*/ //TEMP testing purposes
 		    
-		      sum_Ldep = 0;
+		      /*sum_Ldep = 0;
 		      sum_Ldecay = 0;
 		    
 		      for(nm=0; nm<mgridpoints-1; nm++){
@@ -239,7 +239,7 @@ int main(void){
 		        sum_Ldep = sum_Ldep + Ldeposition[nm];
 		      }
 		      //printf("tau <100\t%g\n", timesec[nt]);
-		      printf("Energy %g\t%g\n", sum_Ldep,  sum_Ldecay); //DC Energy conserved with both positrons and gamma rays
+		      //printf("Energy %g\t%g\n", sum_Ldep,  sum_Ldecay); //DC Energy conserved with both positrons and gamma rays*/ //TEMP testing purposes
 		    }
 		    
 		   for ( nm = 1; nm <= mgridpoints-2; nm ++ ){		// for each point on the mass grid (except two borders for which 2nd derivates cannot be done and will be replaced by boundary conditions)..
@@ -270,7 +270,7 @@ int main(void){
 
 		  unext[mgridpoints - 1] = unext[mgridpoints-2]*(1.0/(1.0 + deltam/(4*M_PI*radius_outer*radius_outer*4/(3.0*kappa*2.0)))); // H13 Eq 2.13 This outer BC makes a smooth L(m) function close to surface
         		  
-		  R = 4*M_PI*pow( radius_outer, 2)/(kappa*u[mgridpoints-2])*fabs((u[mgridpoints-2] - u[mgridpoints-3])/deltam);  // H13 eq 1.19
+		  R = 4*M_PI*pow(radius_outer, 2)/(kappa*u[mgridpoints-2])*fabs((u[mgridpoints-2] - u[mgridpoints-3])/deltam);  // H13 eq 1.19
         
 		  fluxlimiter = (6 + 3*R)/(6 + 3*R + R*R); // Bersten Eq 3.6. H13 Eq 1.18
         
@@ -426,7 +426,7 @@ double gamma_deposition(double Ldeposition[], double Ldecay[], double radius[], 
   }
   
   for(nm=0; nm<mgridpoints-1; nm++){    	
-	//Ldeposition[nm] = Ldeposition[nm] + (0.03 * Ldecay[nm]); //3% of energy goes to positrons which are absorbed in that shell
+	Ldeposition[nm] = Ldeposition[nm] + (0.03 * Ldecay[nm]); //3% of energy goes to positrons which are absorbed in that shell
 		    	
 	theta=0; //Initialise theta
 	
@@ -440,7 +440,7 @@ double gamma_deposition(double Ldeposition[], double Ldecay[], double radius[], 
       
       dtheta = pi / (max_theta);
 	  
-	  Li = ((1 * Ldecay[nm]) * (sin(theta_rad)*(dtheta)*(1.0/2.0))) / normalisation_factor; //97% of energy goes to gamma rays which are free to move
+	  Li = ((0.97 * Ldecay[nm]) * (sin(theta_rad)*(dtheta)*(1.0/2.0))) / normalisation_factor; //97% of energy goes to gamma rays which are free to move
 	
 	  Li_init = Li;
 			  
