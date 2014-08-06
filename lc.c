@@ -64,22 +64,20 @@ int main(void){
   int nm, nm2, nt, ntfinal, row=99, col=2, i, j, ns, value_nm, ntheta; 
   double Tinitial, deltam, Mej_gram, tmax_sec, Eexplosion_erg, r0_cm, v, uinitial, deltat, tadiabatic, R, fluxlimiter, A1, A4, Amax;
   double dudt, Mej_msun, Eexplosion_E51, MassNi_int_msun, radius_outer, Ltot, taugamma, G, Dgamma, mass_cell;
-  double sum_Ldep, sum_Ldecay, tau, normalisation_factor, tauwant;
+  double tau, normalisation_factor, time_dep;
   char name[256];    
   FILE *namefile;
   FILE *infile;
-  //FILE *outfile; //TEMP testing purposes
-  //outfile = fopen("tau.txt", "w"); //TEMP testing purposes
   namefile = fopen("out/modellist.txt", "w");      // puts all output filenames into a list.
   infile = fopen("read_file.txt", "r"); //Opens file to read values
   double *rho = malloc(tgridpoints*sizeof(double)); // Scalar quantities for each time step
   double *tcourant = malloc(tgridpoints*sizeof(double)); 
   double *L = malloc(tgridpoints*sizeof(double));
   double *timesec = malloc(tgridpoints*sizeof(double));
-  double *LNi = malloc(mgridpoints*sizeof(double));
+  double *LNi = malloc(mgridpoints*sizeof(double)); // Mass-coordinate dependent quantities, overwrite each time step
   double *LCo = malloc(mgridpoints*sizeof(double));
   double *Ldecay = malloc(mgridpoints*sizeof(double));
-  double *vvec = malloc(mgridpoints*sizeof(double)); // Mass-coordinate dependent quantities, overwrite each time step
+  double *vvec = malloc(mgridpoints*sizeof(double)); 
   double *rinit = malloc(mgridpoints*sizeof(double));
   double *radius = malloc(mgridpoints*sizeof(double));
   double *utimesrhobis = malloc(mgridpoints*sizeof(double));
@@ -91,6 +89,7 @@ int main(void){
   double *rho_nm = malloc(mgridpoints*sizeof(double)); 
   double *Ldeposition = malloc(mgridpoints*sizeof(double));  
   double masscoord_MassNi[row][col];
+  double *log_l = malloc(tgridpoints*sizeof(double));
   
   time_t t0, t1; // For timing purposes
   clock_t c0, c1;
@@ -172,6 +171,8 @@ int main(void){
 	      timesec[0] = 0;
 
 	      nt = 0; // Time step index
+	      
+	      time_dep = 86400.0; //Set time since Gamma deposition to a day so when it reaches value of tau it automatically does a calculation
     
 	      while(timesec[nt] <= tmax_sec){ // Loop until final time is reached
 		
@@ -209,37 +210,26 @@ int main(void){
 		    }
 		    		    
 		    tau = kappagamma * rho[nt] * radius_outer;
-		    
-		    /*tauwant = 10.0; //TEMP testing purposes
-		    
-			for(nm=0; nm<mgridpoints-1; nm++){ // TEMPORARY
-		    	rho_nm[nm] = rho[nt]*tauwant/tau; //Setting the density for each mass co-ordinate as the density at that time.
-		  	}*/ //TEMP testing purposes
-		    
-		    if(tau>100){
+		       
+		    if(tau>100.0){    
 		      for(nm = 0; nm < mgridpoints-1; nm++){
 		      Ldeposition[nm] = Ldecay[nm]; //If optical depth is high then gamma rays are absorbed in the shell that they are produced
 		      }
 		      //printf("tau >100\t%g\n", timesec[nt]);
 		    }else{  //If optical depth is low then gamma rays are able to travel
-		      
-		      gamma_deposition(Ldeposition, Ldecay, radius, rho_nm, vvec, radius_outer, v, r0_cm, rinit, normalisation_factor); //Calculates deposition in each mass shell
-		      
-		      //fprintf(outfile, "nm\tLdeposition\n");
-		      /*for (nm = 0; nm < mgridpoints-1; nm++){
-		         fprintf(outfile, "%d\t%g\n", nm, Ldeposition[nm]);
+		      	      
+		      if(time_dep < 86400.0){ //If time since calculation is less than a day sum up time
+		        //printf("%g\t%g\t", time_dep, deltat);
+		        time_dep = time_dep + deltat; 
+		        //printf("%g\n", time_dep); //DC Sums up correctly
 		      }
-		      exit(0);*/ //TEMP testing purposes
-		    
-		      /*sum_Ldep = 0;
-		      sum_Ldecay = 0;
-		    
-		      for(nm=0; nm<mgridpoints-1; nm++){
-		        sum_Ldecay = sum_Ldecay + Ldecay[nm];
-		        sum_Ldep = sum_Ldep + Ldeposition[nm];
+		      
+		      if(time_dep >= 86400.0){ //If time is greater than a day do gamma deposition calculation
+		        printf("Calculation at %g\n", timesec[nt]); //DC Calculation once a day
+		        gamma_deposition(Ldeposition, Ldecay, radius, rho_nm, vvec, radius_outer, v, r0_cm, rinit, normalisation_factor); //Calculates deposition in each mass shell
+		        time_dep = 0; //Reset time since gamma deposition calculation	        
 		      }
-		      //printf("tau <100\t%g\n", timesec[nt]);
-		      //printf("Energy %g\t%g\n", sum_Ldep,  sum_Ldecay); //DC Energy conserved with both positrons and gamma rays*/ //TEMP testing purposes
+		      
 		    }
 		    
 		   for ( nm = 1; nm <= mgridpoints-2; nm ++ ){		// for each point on the mass grid (except two borders for which 2nd derivates cannot be done and will be replaced by boundary conditions)..
@@ -255,14 +245,10 @@ int main(void){
 		      R = 4*M_PI*pow(radius[nm], 2)/(kappa*u[nm])*fabs((u[nm] - u[nm-1])/deltam);  // Eq 1.19 in H13
             
 		      fluxlimiter = (6 + 3*R)/(6 + 3*R + R*R); // fluxlimiter is "beta" in H13 writeup. eq 1.19
-		          
-		      for(nm=0; nm<mgridpoints-1; nm++){
 		      		      
-			  	dudt = (A1*utimesrhoprim[nm] + A4*utimesrhobis[nm])*fluxlimiter - u[nm]*(vvec[nm]/(rinit[nm]+vvec[nm]*timesec[nt])) + (Ldeposition[nm]/mass_cell); // add fluxlimiter and use rinit[nm]
+			  dudt = (A1*utimesrhoprim[nm] + A4*utimesrhobis[nm])*fluxlimiter - u[nm]*(vvec[nm]/(rinit[nm]+vvec[nm]*timesec[nt])) + (Ldeposition[nm]/mass_cell); // add fluxlimiter and use rinit[nm]
             
-		      	unext[nm] = u[nm] + dudt*deltat;  // Do the explicit time-derivate step
-		                  
-		      }
+		      unext[nm] = u[nm] + dudt*deltat;  // Do the explicit time-derivate step
 		  }
         
 		  // Boundary conditions
@@ -275,6 +261,8 @@ int main(void){
 		  fluxlimiter = (6 + 3*R)/(6 + 3*R + R*R); // Bersten Eq 3.6. H13 Eq 1.18
         
 		  L[nt] = -16*M_PI*M_PI*c/3.0*pow(radius_outer, 4)/kappa*fluxlimiter*rho[nt]*(u[mgridpoints-2] - u[mgridpoints-3])/deltam; // Bersten Eq 3.5. H13 Eq 1.48
+          
+          log_l[nt] = log10(L[nt]);
         
 		  //L[nt]= 4 * M_PI * pow(radius_outer, 2) * c /4.0 * u[nt][mgridpoints-2] * rho[nt] *2; // sigma T^4 = ac/4 T^4 = c/4 u*rho. But then Teff^4 = 2*T^4. But using this formula does not seem to work well...the fl
         
@@ -461,7 +449,7 @@ double gamma_deposition(double Ldeposition[], double Ldecay[], double radius[], 
 		
 		//printf("%d\t%d\t%d\n", nm, ntheta, ns);
 		            
-		if(Li < (0.0001*Li_init)){
+		if(Li < (0.1*Li_init)){
 		  //printf("Li < 0.0001 initial\n");
 		  break;
 		}else{
